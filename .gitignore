@@ -43,3 +43,30 @@ secrets/
 *.key
 *.crt
 .env.production
+# ============================================================
+# WebMon - fichiers générés
+# ============================================================
+
+# Etat runtime
+runtime/*
+
+# Manifestes capturés automatiquement.
+# Ils peuvent contenir des variables d'environnement sensibles.
+recovery/captured/*
+
+# Inventaire généré automatiquement
+recovery/expected-containers.json
+
+# Metrics temporaires générées
+node-exporter-textfile/*
+
+# Sauvegardes locales
+*.bak
+*.before-*
+*~
+
+
+!runtime/.gitkeep
+!recovery/captured/.gitkeep
+!node-exporter-textfile/.gitkeep
+recovery/expected-containers.json.tmp.*

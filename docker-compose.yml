@@ -1,187 +1,498 @@
-﻿services:
-  # ============ APPLICATIVE ============
+services:
 
+  # ============================================================
+  #                    PARTIE APPLICATIVE
+  # ============================================================
+
+
+  # ------------------------------------------------------------
+  # PostgreSQL
+  # Base de données utilisée par le backend WebMon.
+  # ------------------------------------------------------------
   postgres:
     image: postgres:16-alpine
     container_name: webmon-postgres
+
+    # Relance automatiquement PostgreSQL après un crash
+    # ou un redémarrage de la VM.
+    restart: unless-stopped
+
     environment:
       POSTGRES_USER: webmon
       POSTGRES_PASSWORD: webmon_pwd
       POSTGRES_DB: webmon
+
+    # Les données PostgreSQL sont stockées dans un volume.
+    # Elles survivent donc à la suppression/recréation
+    # du conteneur.
     volumes:
       - postgres-data:/var/lib/postgresql/data
+
+    # Ne vérifie pas seulement que le conteneur tourne :
+    # pg_isready vérifie que PostgreSQL accepte réellement
+    # les connexions.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U webmon"]
       interval: 5s
       timeout: 3s
       retries: 10
+
     networks:
       - webmon
+
+    # Permet à Promtail d'identifier ce conteneur
+    # comme une source de logs à collecter.
     labels:
       logging: "promtail"
 
+
+  # ------------------------------------------------------------
+  # Backend
+  # API Node.js de WebMon.
+  # Communique avec PostgreSQL.
+  # ------------------------------------------------------------
   backend:
     build:
       context: ./backend
       network: host
+
     container_name: webmon-backend
+
     environment:
       DB_HOST: postgres
       DB_USER: webmon
       DB_PASSWORD: webmon_pwd
       DB_NAME: webmon
+      CONTAINERS_FILE: /runtime/containers.json
+
+    # Le backend peut lire les informations découvertes
+    # par webmon-monitor, mais ne peut pas les modifier.
+    volumes:
+      - ./runtime:/runtime:ro
+
     depends_on:
       postgres:
         condition: service_healthy
+
     networks:
       - webmon
+
     restart: unless-stopped
     labels:
       logging: "promtail"
 
+  # ------------------------------------------------------------
+  # Frontend
+  # Interface web HTML/CSS/JavaScript.
+  # ------------------------------------------------------------
   frontend:
     build: ./frontend
+
     container_name: webmon-frontend
+
     networks:
       - webmon
+
     restart: unless-stopped
+
     labels:
       logging: "promtail"
 
+
+  # ------------------------------------------------------------
+  # Nginx
+  # Reverse proxy / point d'entrée de l'application.
+  #
+  # Client -> Nginx -> Frontend
+  #                 -> Backend
+  # ------------------------------------------------------------
   nginx:
     build: ./nginx
+
     container_name: webmon-nginx
+
+    # Port 80 de la VM -> port 80 du conteneur.
     ports:
       - "80:80"
+
     depends_on:
       - backend
       - frontend
+
     networks:
       - webmon
+
     restart: unless-stopped
+
     labels:
       logging: "promtail"
 
-  # ============ MONITORING ============
 
+  # ------------------------------------------------------------
+  # WebMon Monitor
+  #
+  # Surveille les conteneurs Docker existants sans avoir besoin
+  # qu'ils appartiennent au docker-compose de WebMon.
+  #
+  # Il exécute périodiquement check-workers.sh puis génère
+  # les métriques lues par Node Exporter.
+  # ------------------------------------------------------------
+  webmon-monitor:
+    build:
+      context: ./monitor
+
+    image: webmon-monitor:local
+    container_name: webmon-monitor
+
+    # Redémarre automatiquement avec Docker / la VM
+    restart: unless-stopped
+
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    environment:
+      # Fichier de métriques utilisé par Node Exporter
+      METRIC_FILE: /metrics/workers.prom
+
+      # Workers actuellement surveillés fonctionnellement
+      WORKERS: "worker-a:15 worker-b:25"
+      FUNCTIONAL_FILE: /runtime/functional.json
+
+      # Emplacement du heartbeat dans les workers de test
+      HEARTBEAT_PATH: /data/heartbeat
+
+      # Fichier contenant la liste automatique
+      # de tous les conteneurs Docker détectés
+      CONTAINERS_FILE: /runtime/containers.json
+
+    volumes:
+      # Script de contrôle fonctionnel
+
+      # Script de découverte automatique des conteneurs
+      - ./scripts/discover-containers.sh:/scripts/discover-containers.sh:ro
+
+      # Détection et contrôle HTTP automatique
+      - ./scripts/check-http-auto.sh:/scripts/check-http-auto.sh:ro
+
+      # Evaluation et confirmation des pannes
+      - ./scripts/evaluate-failures.sh:/scripts/evaluate-failures.sh:ro
+      - ./scripts/execute-recovery-actions.sh:/scripts/execute-recovery-actions.sh:ro
+      - ./scripts/reconstruct-container.sh:/scripts/reconstruct-container.sh:ro
+      - ./scripts/validate-recovery-manifest.sh:/scripts/validate-recovery-manifest.sh:ro
+      - ./scripts/capture-recovery-manifest.sh:/scripts/capture-recovery-manifest.sh:ro
+      - ./scripts/auto-capture-containers.sh:/scripts/auto-capture-containers.sh:ro
+      - ./scripts/sync-expected-containers.sh:/scripts/sync-expected-containers.sh:ro
+      - ./recovery:/recovery
+      - ./config/recovery-policies.json:/config/recovery-policies.json:ro
+
+      # Dossier dans lequel le monitor écrit les métriques
+      - ./node-exporter-textfile:/metrics
+
+      # Dossier dans lequel il écrit containers.json
+      - ./runtime:/runtime
+
+      # Accès au moteur Docker de la machine
+      - /var/run/docker.sock:/var/run/docker.sock
+
+    entrypoint:
+      - /bin/sh
+      - -c
+
+    command:
+      - |
+        while true; do
+          /scripts/discover-containers.sh
+          /scripts/auto-capture-containers.sh
+          /scripts/sync-expected-containers.sh >/dev/null
+          /scripts/check-http-auto.sh
+          /scripts/evaluate-failures.sh >/dev/null
+          RECOVERY_EXECUTION_ENABLED=1 /scripts/execute-recovery-actions.sh
+          sleep 10
+        done
+
+    labels:
+      webmon.internal: "true"
+
+    networks:
+      - webmon
+
+  # ------------------------------------------------------------
+  # WebMon Probe
+  #
+  # Petite sonde réseau permanente utilisée par WebMon pour
+  # tester les services présents sur des réseaux Docker isolés.
+  #
+  # webmon-monitor pourra connecter temporairement cette sonde
+  # à un réseau, effectuer un test HTTP, puis la déconnecter.
+  # ------------------------------------------------------------
+  webmon-probe:
+    image: busybox:1.37
+    container_name: webmon-probe
+
+    command:
+      - sh
+      - -c
+      - "while true; do sleep 3600; done"
+
+    restart: unless-stopped
+
+    labels:
+      webmon.internal: "true"
+
+    networks:
+      - probe
+
+  # ============================================================
+  #                      MONITORING
+  # ============================================================
+
+
+  # ------------------------------------------------------------
+  # Prometheus
+  # Collecte et stocke les métriques.
+  # ------------------------------------------------------------
   prometheus:
     image: prom/prometheus:v3.4.1
     container_name: webmon-prometheus
+
     volumes:
+      # Configuration Prometheus.
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+      # Persistance des métriques.
       - prometheus-data:/prometheus
+
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
+
+      # Garde les métriques pendant 7 jours.
       - '--storage.tsdb.retention.time=7d'
+
+      # Permet notamment de recharger la configuration
+      # via l'API HTTP de Prometheus.
       - '--web.enable-lifecycle'
+
     ports:
       - "9090:9090"
+
     networks:
       - webmon
+
     restart: unless-stopped
 
+
+  # ------------------------------------------------------------
+  # Grafana
+  # Interface graphique de visualisation.
+  #
+  # Grafana utilise notamment :
+  # - Prometheus pour les métriques
+  # - Loki pour les logs
+  # ------------------------------------------------------------
   grafana:
     image: grafana/grafana:11.3.0
     container_name: webmon-grafana
+
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_USERS_ALLOW_SIGN_UP: "false"
+
     volumes:
+      # Provisioning automatique des datasources / dashboards.
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
+
+      # Données persistantes Grafana.
       - grafana-data:/var/lib/grafana
+
     ports:
       - "3000:3000"
+
     depends_on:
       - prometheus
       - loki
+
     networks:
       - webmon
+
     restart: unless-stopped
 
+
+  # ------------------------------------------------------------
+  # Loki
+  # Stockage centralisé des logs.
+  # ------------------------------------------------------------
   loki:
     image: grafana/loki:3.4.1
     container_name: webmon-loki
+
     command: -config.file=/etc/loki/local-config.yml
+
     volumes:
+      # Configuration Loki.
       - ./loki/loki-config.yml:/etc/loki/local-config.yml:ro
+
+      # Persistance des logs.
       - loki-data:/loki
+
     ports:
       - "3100:3100"
+
     networks:
       - webmon
+
     restart: unless-stopped
 
+
+  # ------------------------------------------------------------
+  # Promtail
+  # Collecte les logs des conteneurs Docker
+  # puis les envoie vers Loki.
+  # ------------------------------------------------------------
   promtail:
     image: grafana/promtail:3.4.1
     container_name: webmon-promtail
+
     command: -config.file=/etc/promtail/config.yml
+
     volumes:
+      # Configuration Promtail.
       - ./promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+
+      # Accès aux fichiers de logs Docker.
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
+
+      # Permet à Promtail de découvrir les conteneurs Docker.
       - /var/run/docker.sock:/var/run/docker.sock:ro
+
     depends_on:
       - loki
+
     networks:
       - webmon
+
     restart: unless-stopped
 
+
+  # ------------------------------------------------------------
+  # cAdvisor
+  # Fournit des métriques sur les conteneurs :
+  # CPU, RAM, réseau, etc.
+  # ------------------------------------------------------------
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.50.0
     container_name: webmon-cadvisor
+
+    # cAdvisor a besoin d'un accès important à l'hôte
+    # pour inspecter les conteneurs.
     privileged: true
+
     devices:
       - /dev/kmsg
+
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
+
     ports:
       - "8080:8080"
+
     networks:
       - webmon
+
     restart: unless-stopped
 
+
+  # ------------------------------------------------------------
+  # Node Exporter
+  # Fournit les métriques de la VM Ubuntu elle-même :
+  # CPU, RAM, disque, réseau, etc.
+  # ------------------------------------------------------------
   node-exporter:
     image: prom/node-exporter:v1.8.2
     container_name: webmon-node-exporter
+
     command:
+      - '--collector.textfile.directory=/textfile'
       - '--path.procfs=/host/proc'
       - '--path.rootfs=/rootfs'
       - '--path.sysfs=/host/sys'
       - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /:/rootfs:ro
+      - ./node-exporter-textfile:/textfile:ro
+
     ports:
       - "9100:9100"
+
     networks:
       - webmon
+
     restart: unless-stopped
 
+
+  # ------------------------------------------------------------
+  # PostgreSQL Exporter
+  # Transforme les informations PostgreSQL en métriques
+  # compréhensibles par Prometheus.
+  # ------------------------------------------------------------
   postgres-exporter:
     image: quay.io/prometheuscommunity/postgres-exporter:v0.16.0
     container_name: webmon-postgres-exporter
+
     restart: unless-stopped
+
     environment:
       DATA_SOURCE_NAME: "postgresql://webmon:webmon_pwd@postgres:5432/webmon?sslmode=disable"
+
     ports:
       - "9187:9187"
+
+    # Attend que PostgreSQL soit réellement opérationnel.
     depends_on:
       postgres:
         condition: service_healthy
+
     networks:
       - webmon
 
+
+
+# ============================================================
+#                        RESEAU
+# ============================================================
+
 networks:
+
+  # Réseau bridge privé utilisé par les conteneurs WebMon
+  # pour communiquer entre eux par leur nom de service.
   webmon:
     driver: bridge
 
+  probe:
+    driver: bridge
+
+# ============================================================
+#                     VOLUMES PERSISTANTS
+# ============================================================
+
 volumes:
+
+  # Données PostgreSQL.
   postgres-data:
+
+  # Base de données temporelle Prometheus.
   prometheus-data:
+
+  # Configuration / état interne Grafana.
   grafana-data:
+
+  # Logs stockés par Loki.
   loki-data:

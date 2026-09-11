@@ -1,0 +1,6 @@
+{
+  "default": {
+    "mode": "observe-only"
+  },
+  "containers": {}
+}
