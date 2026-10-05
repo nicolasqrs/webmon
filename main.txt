@@ -1,0 +1,73 @@
+WEBMON - INTERFACES WEB
+
+Depuis le serveur lui-même, utiliser les adresses localhost ci-dessous.
+Depuis un autre ordinateur, remplacer localhost par l'adresse IP du serveur.
+Exemple : http://IP_DU_SERVEUR:3000
+
+INTERFACES PRINCIPALES
+
+WebMon
+Adresse : http://localhost/
+Rôle : afficher les conteneurs Docker, leur état fonctionnel et les pannes détectées.
+
+Grafana
+Adresse : http://localhost:3000/
+Rôle : consulter les tableaux de bord de métriques et les logs.
+Identifiants initiaux configurés : admin / admin, sauf modification.
+Les logs Loki se consultent dans Grafana, rubrique Explore, source Loki.
+
+Prometheus
+Adresse : http://localhost:9090/
+Rôle : interroger les métriques et vérifier les cibles de collecte.
+Cibles de supervision : http://localhost:9090/targets
+
+cAdvisor
+Adresse : http://localhost:8080/
+Rôle : consulter les ressources utilisées par les conteneurs (CPU, mémoire, réseau).
+
+
+ENDPOINTS TECHNIQUES
+
+Ces adresses renvoient du JSON, des métriques ou un état de santé.
+Elles ne sont pas des tableaux de bord.
+
+API WebMon - Conteneurs
+http://localhost/api/containers
+
+API WebMon - Tâches
+http://localhost/api/tasks
+
+Loki - État de santé
+http://localhost:3100/ready
+Loki ne possède pas d'interface graphique autonome dans cette stack.
+
+Node Exporter - Métriques du serveur
+http://localhost:9100/metrics
+
+PostgreSQL Exporter - Métriques de la base
+http://localhost:9187/metrics
+
+Le backend expose aussi /health et /metrics sur son port Docker interne 3001.
+Ces deux routes ne sont pas publiées par le reverse proxy actuel.
+Prometheus collecte directement les métriques du backend sur le réseau Docker.
+
+PostgreSQL, Promtail, le monitor, la sonde et le worker de démonstration
+ne disposent pas d'une interface utilisateur web publiée dans cette configuration.
+
+
+DÉMONSTRATION ET DÉPANNAGE
+
+Guide complet : docs/DEMO_DEPLOYMENT.md
+
+Démarrer la stack de démonstration :
+docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build
+
+Tester la panne et la reconstruction du worker de démonstration :
+bash scripts/test-demo.sh
+
+Après recréation du backend ou du frontend, si Nginx retourne 502 :
+docker compose -f docker-compose.yml -f docker-compose.demo.yml restart nginx
+Attendre quelques secondes avant de réessayer l'interface.
+
+Les adresses et identifiants ci-dessus correspondent à la configuration du dépôt.
+La démonstration est prévue sur un réseau privé.
