@@ -81,6 +81,82 @@ Attendre quelques secondes avant de réessayer l'interface.
 Les adresses et identifiants ci-dessus correspondent à la configuration du dépôt.
 La démonstration est prévue sur un réseau privé.
 
+AJOUTER UN CONTENEUR À WEBMON
+
+1. Vérifier que le conteneur tourne sur le même moteur Docker que WebMon.
+   Sur la machine qui héberge WebMon :
+   docker ps -a
+
+   Il n'a pas besoin d'appartenir au docker-compose de WebMon.
+   Un conteneur existant sur cette machine est déjà découvert automatiquement :
+   aucune inscription manuelle ni installation d'agent dans le conteneur.
+
+   Les conteneurs sur une autre machine Docker ne sont pas découverts par cette
+   installation. Leur service HTTP peut être surveillé comme un site par URL
+   avec la procédure ci-dessous.
+
+2. Démarrer le conteneur normalement, avec docker run ou son propre Compose.
+   Exemple facultatif : petit serveur HTTP de test, distinct de la stack WebMon.
+   Vérifier que le nom webmon-exemple et le port 8082 sont libres.
+
+   docker run -d --name webmon-exemple --restart unless-stopped \
+     -p 8082:80 \
+     --health-cmd 'wget -q -O /dev/null http://127.0.0.1/' \
+     --health-interval 10s --health-timeout 3s --health-retries 3 \
+     busybox:1.37 sh -c 'mkdir -p /www; echo OK > /www/index.html; exec httpd -f -p 80 -h /www'
+
+   Le site de test est accessible sur http://IP_DU_SERVEUR:8082/.
+   Pour une application existante, garder sa commande et sa configuration ;
+   cet exemple n'est pas une étape obligatoire.
+
+3. Attendre un cycle de découverte et la collecte des métriques.
+   En général, attendre 30 à 60 secondes, davantage si un cycle est long.
+   Actualiser http://IP_DU_SERVEUR/ pour voir le conteneur dans WebMon.
+   Ouvrir ensuite :
+   http://IP_DU_SERVEUR:3000/d/webmon-containers/webmon-conteneurs
+
+   Le menu Conteneur permet de choisir son nom et de consulter ses sondes,
+   son CPU, sa mémoire et son réseau. Les débits nécessitent plusieurs mesures.
+
+4. Vérifier que la sonde représente réellement la santé de l'application.
+   WebMon utilise dans cet ordre :
+   - Un heartbeat explicitement configuré pour un worker.
+   - Le healthcheck Docker natif, s'il existe.
+   - Une sonde HTTP découverte sur les ports et chemins connus.
+   - Sinon, l'état Docker seul : application Non testé.
+
+   Pour une application sans sonde adaptée, ajouter un healthcheck à son image
+   ou à son propre docker-compose.yml, puis recréer ce conteneur.
+   Exemple à intégrer à un service HTTP dont l'image dispose de wget :
+
+   healthcheck:
+     test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:80/health"]
+     interval: 10s
+     timeout: 3s
+     retries: 3
+     start_period: 20s
+
+   Adapter le port, le chemin et la commande à l'application.
+   /health doit exister : une page d'accueil qui répond ne garantit pas que
+   la base de données ou les autres dépendances fonctionnent.
+   Pour une base distante, le healthcheck doit vérifier la connexion réelle
+   depuis l'application. WebMon ne teste pas cette dépendance automatiquement.
+
+5. Si le conteneur n'apparaît pas ou reste Non testé :
+   docker ps -a
+   docker logs --tail 50 webmon-monitor
+   curl -fsS http://localhost/api/containers
+
+   Vérifier qu'il ne porte pas le label webmon.internal=true, qui masque
+   les composants internes. Un conteneur sans HTTP ni healthcheck peut être
+   découvert avec ses ressources tout en restant Non testé.
+
+L'ajout à la supervision n'autorise pas automatiquement le redémarrage ou la
+reconstruction. La politique par défaut est observe-only (observation).
+Configurer séparément config/recovery-policies.json pour autoriser une action.
+Le mode de démonstration autorise la reconstruction uniquement du demo-worker.
+Guide détaillé : docs/CONTAINER_MONITORING.md
+
 SUPERVISION DES SITES WEB NON CONTENEURISÉS
 
 WebMon peut aussi surveiller des sites HTTP/HTTPS hébergés sans Docker,
@@ -92,7 +168,7 @@ Configuration des URL : config/websites.json
 Exemple fourni : config/websites.example.json
 Guide détaillé : docs/WEBSITE_MONITORING.md
 
-Déployer la fonctionnalité depuis le dossier webmon :
+1. Si la fonctionnalité n'est pas encore déployée, depuis le dossier webmon :
 git switch main
 git pull --ff-only https://github.com/nicolasqrs/webmon.git main
 docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build --no-deps webmon-monitor
@@ -100,7 +176,7 @@ docker compose -f docker-compose.yml -f docker-compose.demo.yml restart grafana
 
 Sans la démonstration, retirer -f docker-compose.demo.yml des commandes Docker.
 
-Ajouter ou modifier les sites :
+2. Ajouter ou modifier les sites depuis le dossier webmon :
 nano config/websites.json
 
 Le fichier initial contient []. Exemple de contenu à adapter :
@@ -121,10 +197,19 @@ Le fichier initial contient []. Exemple de contenu à adapter :
   }
 ]
 
+3. Enregistrer dans nano : Ctrl+O, Entrée, puis Ctrl+X pour quitter.
+Vérifier la syntaxe JSON depuis le monitor :
+docker exec webmon-monitor jq empty /website-config/websites.json
+Une sortie vide et un code de retour 0 indiquent un JSON valide.
+
 Chaque nom doit être unique. Les modifications sont lues au cycle suivant,
 sans redémarrage, et les sites apparaissent automatiquement dans Grafana.
 Supprimer une entrée retire sa supervision courante ; son historique reste
 dans Prometheus pendant la durée de rétention.
+
+4. Attendre la prochaine sonde et la collecte Prometheus (en général 30 à 60 s),
+puis ouvrir le dashboard Sites web indiqué en haut de cette section.
+Sélectionner le site dans le filtre pour consulter son résultat et ses courbes.
 
 Pour un site sur la machine Docker, utiliser http://host.docker.internal:PORT/.
 Le service doit écouter sur une interface accessible depuis Docker.
