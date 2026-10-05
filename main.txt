@@ -80,3 +80,13 @@ Attendre quelques secondes avant de réessayer l'interface.
 
 Les adresses et identifiants ci-dessus correspondent à la configuration du dépôt.
 La démonstration est prévue sur un réseau privé.
+
+SUPERVISION DES SITES WEB NON CONTENEURISÉS
+
+Dashboard : http://localhost:3000/d/webmon-websites/webmon-sites-web
+Configuration des URL : config/websites.json
+Exemple : config/websites.example.json
+Guide : docs/WEBSITE_MONITORING.md
+Contrôles : code HTTP attendu, durée de réponse, panne après plusieurs échecs.
+Les nouveaux sites configurés apparaissent automatiquement dans Grafana.
+Le fichier initial est vide ; renseigner les URL à superviser.

@@ -1,0 +1,9 @@
+[
+  {
+    "name": "Mon site",
+    "url": "https://example.com/",
+    "expected_status": 200,
+    "timeout_seconds": 5,
+    "failure_threshold": 3
+  }
+]

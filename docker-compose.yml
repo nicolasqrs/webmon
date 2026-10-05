@@ -155,6 +155,7 @@ services:
       # Fichier de métriques utilisé par Node Exporter
       METRIC_FILE: /metrics/workers.prom
       HOST_ROOT: /host
+      WEBSITES_CONFIG_FILE: /website-config/websites.json
 
       # Workers actuellement surveillés fonctionnellement
       WORKERS: "${WEBMON_WORKERS:-}"
@@ -170,6 +171,8 @@ services:
     volumes:
       # Script de contrôle fonctionnel
       - ./scripts/check-workers.sh:/scripts/check-workers.sh:ro
+      - ./scripts/check-websites.sh:/scripts/check-websites.sh:ro
+      - ./config:/website-config:ro
       # Validation des chemins de bind mounts de l'hôte.
       - /:/host:ro
 
@@ -206,6 +209,13 @@ services:
 
     command:
       - |
+        # Les sites externes ont leur propre boucle : une URL lente ne retarde pas Docker.
+        (
+          while true; do
+            /scripts/check-websites.sh || echo "WebMon: cycle des sites incomplet." >&2
+            sleep 30
+          done
+        ) &
         while true; do
           if /scripts/discover-containers.sh &&
              /scripts/auto-capture-containers.sh &&
