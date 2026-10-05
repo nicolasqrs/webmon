@@ -47,7 +47,7 @@ mkdir -p "$(dirname "$FUNCTIONAL_FILE")"
 #
 # signifie que worker-a est considéré fonctionnel si son
 # heartbeat date de 15 secondes maximum.
-WORKERS="${WORKERS:-worker-a:15 worker-b:25}"
+WORKERS="${WORKERS-}"
 
 # Emplacement du heartbeat à l'intérieur des workers.
 HEARTBEAT_PATH="${HEARTBEAT_PATH:-/data/heartbeat}"
@@ -124,7 +124,7 @@ check_worker() {
                     # ----------------------------------------
                     # 4. Vérification fonctionnelle
                     # ----------------------------------------
-                    if [ "$AGE" -le "$MAX_AGE" ]; then
+                    if [ "$AGE" -ge 0 ] && [ "$AGE" -le "$MAX_AGE" ]; then
 
                         FUNCTIONAL=1
                         echo "OK : le worker travaille normalement"

@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const client = require('prom-client');
 const { initDb, getTasks, createTask, updateTask, deleteTask } = require('./db');
+const { mergeFailureStates } = require('./container-state');
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -48,6 +49,8 @@ const FUNCTIONAL_FILE =
 // Fichier contenant les contrôles HTTP détectés automatiquement.
 const HTTP_FUNCTIONAL_FILE =
   process.env.HTTP_FUNCTIONAL_FILE || '/runtime/http-functional.json';
+const FAILURE_STATE_FILE =
+  process.env.FAILURE_STATE_FILE || '/runtime/failure-state.json';
 
 app.get('/api/containers', async (req, res) => {
   try {
@@ -227,8 +230,11 @@ app.get('/api/containers', async (req, res) => {
             health_status:
               healthStatus,
 
+            running:
+              container.State === 'running',
+
             functional:
-              healthStatus === 'healthy'
+              container.State === 'running' && healthStatus === 'healthy'
           }
         };
       }
@@ -291,7 +297,14 @@ app.get('/api/containers', async (req, res) => {
     // 6. Réponse au frontend
     // ========================================================
 
-    res.json(result);
+    let failureStates = [];
+    try {
+      const data = JSON.parse(await fs.readFile(FAILURE_STATE_FILE, 'utf8'));
+      if (Array.isArray(data)) failureStates = data;
+    } catch (e) {
+      console.warn('failure-state.json unavailable - continuing without recovery state');
+    }
+    res.json(mergeFailureStates(result, failureStates));
 
   } catch (e) {
 

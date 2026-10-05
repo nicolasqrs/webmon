@@ -69,6 +69,7 @@ function getStateClass(state) {
 
     case 'exited':
     case 'dead':
+    case 'missing':
       return 'state-down';
 
     case 'restarting':
@@ -146,6 +147,10 @@ function getFunctionalSource(webmon) {
 
   if (webmon.source === 'webmon') {
     return 'WebMon heartbeat';
+  }
+
+  if (webmon.source === 'inventory') {
+    return 'Inventaire des conteneurs attendus';
   }
 
  if (webmon.source === 'auto-http') {
@@ -293,6 +298,13 @@ async function loadContainers() {
           ${sourceHtml}
 
           ${heartbeatHtml}
+
+          ${container.recovery ? `
+            <span class="functional-source">
+              Récupération : ${escapeHtml(container.recovery.recovery_mode)}
+              · ${container.recovery.failure_confirmed ? 'Panne confirmée' : escapeHtml(container.recovery.status)}
+            </span>
+          ` : ''}
 
         </div>
       `;

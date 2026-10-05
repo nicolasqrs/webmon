@@ -4,14 +4,15 @@
 # WebMon - Capture automatique des conteneurs découverts
 # ============================================================
 
-set -u
+set -eu
 
 CAPTURE_SCRIPT="${CAPTURE_SCRIPT:-/scripts/capture-recovery-manifest.sh}"
 CAPTURE_DIR="${RECOVERY_CAPTURE_DIR:-/recovery/captured}"
 
 mkdir -p "$CAPTURE_DIR"
 
-docker ps -aq | while read -r id; do
+IDS="$(docker ps -aq --no-trunc)"
+printf '%s\n' "$IDS" | while read -r id; do
 
     [ -n "$id" ] || continue
 
@@ -34,7 +35,13 @@ docker ps -aq | while read -r id; do
 
     # Première découverte :
     # sauvegarde immédiatement la configuration.
-    if [ ! -s "$file" ]; then
+    captured_id=""
+    if [ -s "$file" ]; then
+        captured_id="$(jq -r '.container.container_id // empty' "$file" 2>/dev/null || true)"
+    fi
+
+    # Une recréation volontaire doit remplacer l'ancienne configuration capturée.
+    if [ ! -s "$file" ] || [ "$captured_id" != "$id" ]; then
 
         echo "WebMon: nouvelle configuration détectée : $name"
 

@@ -154,9 +154,10 @@ services:
     environment:
       # Fichier de métriques utilisé par Node Exporter
       METRIC_FILE: /metrics/workers.prom
+      HOST_ROOT: /host
 
       # Workers actuellement surveillés fonctionnellement
-      WORKERS: "worker-a:15 worker-b:25"
+      WORKERS: "${WEBMON_WORKERS:-}"
       FUNCTIONAL_FILE: /runtime/functional.json
 
       # Emplacement du heartbeat dans les workers de test
@@ -168,6 +169,9 @@ services:
 
     volumes:
       # Script de contrôle fonctionnel
+      - ./scripts/check-workers.sh:/scripts/check-workers.sh:ro
+      # Validation des chemins de bind mounts de l'hôte.
+      - /:/host:ro
 
       # Script de découverte automatique des conteneurs
       - ./scripts/discover-containers.sh:/scripts/discover-containers.sh:ro
@@ -202,12 +206,16 @@ services:
     command:
       - |
         while true; do
-          /scripts/discover-containers.sh
-          /scripts/auto-capture-containers.sh
-          /scripts/sync-expected-containers.sh >/dev/null
-          /scripts/check-http-auto.sh
-          /scripts/evaluate-failures.sh >/dev/null
-          RECOVERY_EXECUTION_ENABLED=1 /scripts/execute-recovery-actions.sh
+          if /scripts/discover-containers.sh &&
+             /scripts/auto-capture-containers.sh &&
+             /scripts/sync-expected-containers.sh >/dev/null &&
+             /scripts/check-workers.sh &&
+             /scripts/check-http-auto.sh &&
+             /scripts/evaluate-failures.sh >/dev/null; then
+            RECOVERY_EXECUTION_ENABLED=1 /scripts/execute-recovery-actions.sh
+          else
+            echo "WebMon: cycle incomplet, récupération suspendue." >&2
+          fi
           sleep 10
         done
 

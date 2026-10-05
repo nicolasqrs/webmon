@@ -18,6 +18,7 @@
 # ============================================================
 
 set -eu
+umask 077
 
 NAME="${1:-}"
 
@@ -59,6 +60,9 @@ jq '
             ),
 
         container: {
+
+            container_id: $c.Id,
+            image_id: $c.Image,
 
             name:
                 (
