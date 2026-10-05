@@ -392,8 +392,13 @@ services:
   # CPU, RAM, réseau, etc.
   # ------------------------------------------------------------
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.50.0
+    image: ghcr.io/google/cadvisor:v0.54.0
     container_name: webmon-cadvisor
+
+    # Docker overlayfs utilise les snapshots containerd, pris en charge depuis 0.54.
+    # Le socket est accessible via le montage /var/run ci-dessous.
+    command:
+      - '--containerd=${WEBMON_CONTAINERD_SOCKET:-/var/run/containerd/containerd.sock}'
 
     # cAdvisor a besoin d'un accès important à l'hôte
     # pour inspecter les conteneurs.
