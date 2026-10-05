@@ -15,6 +15,7 @@
 # ============================================================
 
 set -u
+HOST_ROOT="${HOST_ROOT:-}"
 
 MANIFEST="${1:-}"
 
@@ -60,7 +61,7 @@ fi
 
 
 NAME="$(jq -r '.container.name' "$MANIFEST")"
-IMAGE="$(jq -r '.container.image' "$MANIFEST")"
+IMAGE="$(jq -r '.container.image_id // .container.image' "$MANIFEST")"
 RESTART="$(jq -r '.container.restart_policy.name // "no"' "$MANIFEST")"
 
 ERRORS=0
@@ -151,7 +152,7 @@ while [ "$i" -lt "$MOUNT_COUNT" ]; do
             ;;
 
         bind)
-            if [ -e "$SOURCE" ]; then
+            if [ -e "$HOST_ROOT$SOURCE" ]; then
                 echo "[OK] Bind : $SOURCE -> $TARGET"
             else
                 echo "[ERREUR] Source bind absente : $SOURCE"

@@ -1,5 +1,8 @@
 # WebMon
 
+Pour le déploiement de démonstration et le test complet de récupération,
+voir [le guide de démonstration](docs/DEMO_DEPLOYMENT.md).
+
 WebMon est une plateforme de supervision et de récupération automatique pour des conteneurs Docker.
 
 Son objectif est de **découvrir des conteneurs existants sans les interrompre**, de vérifier qu'ils fonctionnent réellement, de conserver les informations nécessaires à leur reconstruction et, lorsqu'une politique l'autorise, de tenter automatiquement une récupération.
@@ -679,7 +682,7 @@ curl
 ## Récupérer le projet
 
 ```bash
-git clone https://github.com/HironixNervoxX/webmon.git
+git clone https://github.com/nicolasqrs/webmon.git
 cd webmon
 ```
 

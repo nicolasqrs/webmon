@@ -154,9 +154,10 @@ services:
     environment:
       # Fichier de métriques utilisé par Node Exporter
       METRIC_FILE: /metrics/workers.prom
+      HOST_ROOT: /host
 
       # Workers actuellement surveillés fonctionnellement
-      WORKERS: "worker-a:15 worker-b:25"
+      WORKERS: "${WEBMON_WORKERS:-}"
       FUNCTIONAL_FILE: /runtime/functional.json
 
       # Emplacement du heartbeat dans les workers de test
@@ -168,6 +169,9 @@ services:
 
     volumes:
       # Script de contrôle fonctionnel
+      - ./scripts/check-workers.sh:/scripts/check-workers.sh:ro
+      # Validation des chemins de bind mounts de l'hôte.
+      - /:/host:ro
 
       # Script de découverte automatique des conteneurs
       - ./scripts/discover-containers.sh:/scripts/discover-containers.sh:ro
@@ -177,6 +181,7 @@ services:
 
       # Evaluation et confirmation des pannes
       - ./scripts/evaluate-failures.sh:/scripts/evaluate-failures.sh:ro
+      - ./scripts/export-container-metrics.sh:/scripts/export-container-metrics.sh:ro
       - ./scripts/execute-recovery-actions.sh:/scripts/execute-recovery-actions.sh:ro
       - ./scripts/reconstruct-container.sh:/scripts/reconstruct-container.sh:ro
       - ./scripts/validate-recovery-manifest.sh:/scripts/validate-recovery-manifest.sh:ro
@@ -202,12 +207,17 @@ services:
     command:
       - |
         while true; do
-          /scripts/discover-containers.sh
-          /scripts/auto-capture-containers.sh
-          /scripts/sync-expected-containers.sh >/dev/null
-          /scripts/check-http-auto.sh
-          /scripts/evaluate-failures.sh >/dev/null
-          RECOVERY_EXECUTION_ENABLED=1 /scripts/execute-recovery-actions.sh
+          if /scripts/discover-containers.sh &&
+             /scripts/auto-capture-containers.sh &&
+             /scripts/sync-expected-containers.sh >/dev/null &&
+             /scripts/check-workers.sh &&
+             /scripts/check-http-auto.sh &&
+             /scripts/evaluate-failures.sh >/dev/null &&
+             /scripts/export-container-metrics.sh; then
+            RECOVERY_EXECUTION_ENABLED=1 /scripts/execute-recovery-actions.sh
+          else
+            echo "WebMon: cycle incomplet, récupération suspendue." >&2
+          fi
           sleep 10
         done
 
@@ -382,8 +392,13 @@ services:
   # CPU, RAM, réseau, etc.
   # ------------------------------------------------------------
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.50.0
+    image: ghcr.io/google/cadvisor:0.54.0
     container_name: webmon-cadvisor
+
+    # Docker overlayfs utilise les snapshots containerd, pris en charge depuis 0.54.
+    # Le socket est accessible via le montage /var/run ci-dessous.
+    command:
+      - '--containerd=${WEBMON_CONTAINERD_SOCKET:-/var/run/containerd/containerd.sock}'
 
     # cAdvisor a besoin d'un accès important à l'hôte
     # pour inspecter les conteneurs.

@@ -293,7 +293,7 @@ is_already_known() {
 
     NAME="$1"
 
-    grep -q "^${NAME}|" "$CHECKS_FILE" 2>/dev/null
+    awk -F '|' -v name="$NAME" '$1 == name {found=1} END {exit !found}' "$CHECKS_FILE"
 }
 
 
@@ -343,6 +343,15 @@ do
         continue
     fi
 
+    # Les sondes internes et les workers avec heartbeat n'ont pas besoin de scan HTTP.
+    INTERNAL="$(docker inspect --format '{{index .Config.Labels "webmon.internal"}}' "$NAME" 2>/dev/null)"
+    [ "$INTERNAL" = "true" ] && continue
+    CUSTOM=0
+    for WORKER in ${WORKERS-}; do
+        [ "${WORKER%%:*}" = "$NAME" ] && CUSTOM=1
+    done
+    [ "$CUSTOM" -eq 1 ] && continue
+
 
     # --------------------------------------------------------
     # Healthcheck Docker natif ?
@@ -350,7 +359,7 @@ do
 
     HAS_HEALTHCHECK="$(
         docker inspect \
-            --format '{{if .Config.Healthcheck}}yes{{else}}no{{end}}' \
+            --format '{{if .State.Health}}yes{{else}}no{{end}}' \
             "$NAME" \
             2>/dev/null
     )"

@@ -5,8 +5,14 @@
 # ============================================================
 
 set -eu
+HOST_ROOT="${HOST_ROOT:-}"
 
 MANIFEST="${1:-}"
+DRY_RUN="${2:-}"
+case "$DRY_RUN" in
+    ''|--dry-run) ;;
+    *) echo "ERREUR : argument inconnu : $DRY_RUN"; exit 1 ;;
+esac
 
 if [ -z "$MANIFEST" ]; then
     echo "ERREUR : manifeste non fourni."
@@ -25,7 +31,7 @@ fi
 
 
 NAME="$(jq -r '.container.name' "$MANIFEST")"
-IMAGE="$(jq -r '.container.image' "$MANIFEST")"
+IMAGE="$(jq -r '.container.image_id // .container.image' "$MANIFEST")"
 RESTART="$(jq -r '.container.restart_policy.name // "no"' "$MANIFEST")"
 MAX_RETRY="$(jq -r '.container.restart_policy.maximum_retry_count // 0' "$MANIFEST")"
 
@@ -37,7 +43,7 @@ echo "WebMon reconstruct: préparation de $NAME"
 # SECURITES
 # ============================================================
 
-if docker inspect "$NAME" >/dev/null 2>&1; then
+if [ "$DRY_RUN" != "--dry-run" ] && docker inspect "$NAME" >/dev/null 2>&1; then
     echo "ERREUR : $NAME existe déjà. Reconstruction refusée."
     exit 1
 fi
@@ -186,7 +192,7 @@ while [ "$i" -lt "$MOUNT_COUNT" ]; do
             ;;
 
         bind)
-            [ -e "$SOURCE" ] || {
+            [ -e "$HOST_ROOT$SOURCE" ] || {
                 echo "ERREUR : bind absent : $SOURCE"
                 exit 1
             }
@@ -256,7 +262,46 @@ if [ "$NETWORK_COUNT" -gt 0 ]; then
     }
 
     set -- "$@" --network "$FIRST_NETWORK"
+
+    ALIAS_COUNT="$(jq '(.container.networks[0].aliases // []) | length' "$MANIFEST")"
+    a=0
+    while [ "$a" -lt "$ALIAS_COUNT" ]; do
+        ALIAS="$(jq -r ".container.networks[0].aliases[$a]" "$MANIFEST")"
+        set -- "$@" --network-alias "$ALIAS"
+        a=$((a + 1))
+    done
 fi
+
+# Restituer le healthcheck défini au déploiement, pas seulement celui de l'image.
+HEALTH_TYPE="$(jq -r '.container.healthcheck.Test[0] // empty' "$MANIFEST")"
+case "$HEALTH_TYPE" in
+    NONE)
+        set -- "$@" --no-healthcheck
+        ;;
+    CMD|CMD-SHELL)
+        if [ "$HEALTH_TYPE" = "CMD" ]; then
+            HEALTH_CMD="$(jq -r '.container.healthcheck.Test[1:] | @sh' "$MANIFEST")"
+        else
+            HEALTH_CMD="$(jq -r '.container.healthcheck.Test[1]' "$MANIFEST")"
+        fi
+        set -- "$@" --health-cmd "$HEALTH_CMD"
+        for FIELD in Interval Timeout StartPeriod StartInterval; do
+            VALUE="$(jq -r --arg field "$FIELD" '.container.healthcheck[$field] // 0' "$MANIFEST")"
+            [ "$VALUE" -gt 0 ] || continue
+            case "$FIELD" in
+                Interval) OPTION=--health-interval ;;
+                Timeout) OPTION=--health-timeout ;;
+                StartPeriod) OPTION=--health-start-period ;;
+                StartInterval) OPTION=--health-start-interval ;;
+            esac
+            set -- "$@" "$OPTION" "${VALUE}ns"
+        done
+        RETRIES="$(jq -r '.container.healthcheck.Retries // 0' "$MANIFEST")"
+        if [ "$RETRIES" -gt 0 ]; then
+            set -- "$@" --health-retries "$RETRIES"
+        fi
+        ;;
+esac
 
 
 # ------------------------------------------------------------
@@ -285,7 +330,9 @@ done
 
 echo "WebMon reconstruct: création de $NAME..."
 
-if ! "$@" >/dev/null; then
+if [ "$DRY_RUN" = "--dry-run" ]; then
+    jq -nr --args '$ARGS.positional | @sh' -- "$@"
+elif ! "$@" >/dev/null; then
     echo "ERREUR : docker create a échoué pour $NAME"
     exit 1
 fi
@@ -309,7 +356,17 @@ if [ "$NETWORK_COUNT" -gt 1 ]; then
             exit 1
         }
 
-        if ! docker network connect "$NETWORK" "$NAME"; then
+        set -- docker network connect
+        ALIAS_COUNT="$(jq "(.container.networks[$i].aliases // []) | length" "$MANIFEST")"
+        a=0
+        while [ "$a" -lt "$ALIAS_COUNT" ]; do
+            ALIAS="$(jq -r ".container.networks[$i].aliases[$a]" "$MANIFEST")"
+            set -- "$@" --alias "$ALIAS"
+            a=$((a + 1))
+        done
+        if [ "$DRY_RUN" = "--dry-run" ]; then
+            jq -nr --args '$ARGS.positional | @sh' -- "$@" "$NETWORK" "$NAME"
+        elif ! "$@" "$NETWORK" "$NAME"; then
             echo "ERREUR : connexion au réseau $NETWORK impossible."
             docker rm -f "$NAME" >/dev/null 2>&1 || true
             exit 1
@@ -325,6 +382,12 @@ fi
 # ============================================================
 
 echo "WebMon reconstruct: démarrage de $NAME..."
+
+if [ "$DRY_RUN" = "--dry-run" ]; then
+    jq -nr --arg name "$NAME" '["docker", "start", $name] | @sh'
+    echo "DRY-RUN TERMINE : aucune modification Docker."
+    exit 0
+fi
 
 if ! docker start "$NAME" >/dev/null; then
 

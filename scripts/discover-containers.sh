@@ -1,64 +1,26 @@
 #!/bin/sh
-
-# ============================================================
-# WebMon - Découverte automatique des conteneurs Docker
-# ============================================================
-
-# Trouve automatiquement le dossier du projet lorsque le script
-# est exécuté directement depuis WebMon.
+# Découverte atomique : conserver le dernier snapshot si Docker est indisponible.
+set -eu
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-
-# Emplacement du fichier généré.
-#
-# Cette variable pourra ensuite être remplacée depuis Docker
-# par exemple avec :
-# CONTAINERS_FILE=/runtime/containers.json
 CONTAINERS_FILE="${CONTAINERS_FILE:-$PROJECT_DIR/runtime/containers.json}"
-
-# On écrit d'abord dans un fichier temporaire.
-# Cela évite qu'un autre composant lise un JSON à moitié écrit.
-TMP_FILE="${CONTAINERS_FILE}.tmp"
-
+TMP_FILE="${CONTAINERS_FILE}.tmp.$$"
+PS_FILE="${TMP_FILE}.ps"
+INSPECT_FILE="${TMP_FILE}.inspect"
+trap 'rm -f "$TMP_FILE" "$PS_FILE" "$INSPECT_FILE"' EXIT INT TERM
 mkdir -p "$(dirname "$CONTAINERS_FILE")"
-
-
-# ============================================================
-# Récupération des conteneurs
-# ============================================================
-
-{
-    echo "["
-
-    # docker ps -a :
-    # - sans -a : uniquement les conteneurs en cours d'exécution
-    # - avec -a : TOUS les conteneurs, même arrêtés
-    #
-    # {{json .}} demande à Docker de retourner chaque
-    # conteneur sous forme JSON.
-    docker ps -a --format '{{json .}}' | awk '
-        BEGIN {
-            first = 1
-        }
-
-        {
-            if (!first) {
-                printf ",\n"
-            }
-
-            printf "%s", $0
-            first = 0
-        }
-
-        END {
-            print "\n]"
-        }
-    '
-
-} > "$TMP_FILE"
-
-
-# Remplacement atomique du fichier final.
+docker ps -a --format '{{json .}}' > "$PS_FILE"
+IDS="$(jq -rs 'map(.ID) | join(" ")' "$PS_FILE")"
+if [ -n "$IDS" ]; then
+    # Les identifiants Docker ne contiennent pas d'espaces.
+    docker inspect $IDS > "$INSPECT_FILE"
+else
+    echo '[]' > "$INSPECT_FILE"
+fi
+jq -s --slurpfile inspected "$INSPECT_FILE" '
+    map(. as $row |
+        (first($inspected[0][] | select(.Id | startswith($row.ID))) // {}) as $detail |
+        . + {HealthStatus: ($detail.State.Health.Status // "")})
+' "$PS_FILE" > "$TMP_FILE"
 mv "$TMP_FILE" "$CONTAINERS_FILE"
-
 echo "Découverte terminée : $CONTAINERS_FILE"

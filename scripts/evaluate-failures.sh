@@ -21,6 +21,7 @@
 # ============================================================
 # CONFIGURATION
 # ============================================================
+set -eu
 
 CUSTOM_FILE="${FUNCTIONAL_FILE:-/runtime/functional.json}"
 HTTP_FILE="${HTTP_FUNCTIONAL_FILE:-/runtime/http-functional.json}"
@@ -229,7 +230,8 @@ jq -n \
         ) as $healthStatus |
 
         (
-            ($container.Config.Healthcheck // null) != null
+            (($container.Config.Healthcheck // null) != null)
+            and (($container.Config.Healthcheck.Test[0] // "") != "NONE")
         ) as $hasHealthcheck |
 
 
@@ -237,7 +239,16 @@ jq -n \
         # PRIORITE 1 : contrôle personnalisé WebMon
         # ----------------------------------------------------
 
-        if $custom != null then
+        if $dockerState != "running" then
+
+            {
+                name: $name,
+                source: null,
+                docker_state: $dockerState,
+                status: "critical"
+            }
+
+        elif $custom != null then
 
             {
                 name: $name,

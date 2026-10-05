@@ -141,12 +141,17 @@ preflight_reconstruction() {
         return 1
     fi
 
+    if ! jq -e --arg name "$NAME" '.container.name == $name' "$MANIFEST" >/dev/null; then
+        echo "WebMon recovery: le manifeste ne correspond pas à $NAME." >&2
+        return 1
+    fi
+
     if ! "$VALIDATE_SCRIPT" "$MANIFEST" >/dev/null 2>&1; then
         echo "WebMon recovery: validation du manifeste échouée." >&2
         return 1
     fi
 
-    IMAGE="$(jq -r '.container.image // empty' "$MANIFEST")"
+    IMAGE="$(jq -r '.container.image_id // .container.image // empty' "$MANIFEST")"
 
     if [ -z "$IMAGE" ] ||
        ! docker image inspect "$IMAGE" >/dev/null 2>&1

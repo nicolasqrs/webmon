@@ -1,0 +1,35 @@
+# Utilisation : docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build
+services:
+  webmon-monitor:
+    environment:
+      WORKERS: "webmon-demo-worker:15"
+    volumes:
+      - ./config/recovery-policies.demo.json:/config/recovery-policies.json:ro
+
+  demo-worker:
+    image: busybox:1.37
+    container_name: webmon-demo-worker
+    restart: unless-stopped
+    entrypoint: ["/bin/sh"]
+    command:
+      - -c
+      - |
+        mkdir -p /data
+        counter=$$(cat /data/counter 2>/dev/null || echo 0)
+        while true; do
+          counter=$$((counter + 1))
+          printf '%s\n' "$$counter" > /data/counter.tmp && mv /data/counter.tmp /data/counter
+          date +%s > /data/heartbeat.tmp && mv /data/heartbeat.tmp /data/heartbeat
+          sleep 2
+        done
+    labels:
+      webmon.demo: "true"
+    volumes:
+      - demo-worker-data:/data
+    networks:
+      webmon:
+        aliases:
+          - demo-worker
+
+volumes:
+  demo-worker-data:
