@@ -83,10 +83,80 @@ La démonstration est prévue sur un réseau privé.
 
 SUPERVISION DES SITES WEB NON CONTENEURISÉS
 
+WebMon peut aussi surveiller des sites HTTP/HTTPS hébergés sans Docker,
+sur une autre machine ou sur Internet, s'ils sont accessibles depuis le monitor.
+
 Dashboard : http://localhost:3000/d/webmon-websites/webmon-sites-web
+Dans Grafana : Dashboards > WebMon > WebMon - Sites web.
 Configuration des URL : config/websites.json
-Exemple : config/websites.example.json
-Guide : docs/WEBSITE_MONITORING.md
-Contrôles : code HTTP attendu, durée de réponse, panne après plusieurs échecs.
-Les nouveaux sites configurés apparaissent automatiquement dans Grafana.
-Le fichier initial est vide ; renseigner les URL à superviser.
+Exemple fourni : config/websites.example.json
+Guide détaillé : docs/WEBSITE_MONITORING.md
+
+Déployer la fonctionnalité depuis le dossier webmon :
+git switch main
+git pull --ff-only https://github.com/nicolasqrs/webmon.git main
+docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build --no-deps webmon-monitor
+docker compose -f docker-compose.yml -f docker-compose.demo.yml restart grafana
+
+Sans la démonstration, retirer -f docker-compose.demo.yml des commandes Docker.
+
+Ajouter ou modifier les sites :
+nano config/websites.json
+
+Le fichier initial contient []. Exemple de contenu à adapter :
+[
+  {
+    "name": "Mon site",
+    "url": "https://www.mon-site.fr/",
+    "expected_status": 200,
+    "timeout_seconds": 5,
+    "failure_threshold": 3
+  },
+  {
+    "name": "Intranet",
+    "url": "http://192.168.1.50/health",
+    "expected_status": 200,
+    "timeout_seconds": 5,
+    "failure_threshold": 3
+  }
+]
+
+Chaque nom doit être unique. Les modifications sont lues au cycle suivant,
+sans redémarrage, et les sites apparaissent automatiquement dans Grafana.
+Supprimer une entrée retire sa supervision courante ; son historique reste
+dans Prometheus pendant la durée de rétention.
+
+Pour un site sur la machine Docker, utiliser http://host.docker.internal:PORT/.
+Le service doit écouter sur une interface accessible depuis Docker.
+localhost dans une URL désigne le conteneur monitor, pas la VM.
+
+Contrôles :
+- Requête GET, avec suivi des redirections HTTP/HTTPS (maximum 5).
+- Code HTTP final comparé au code attendu (200 par défaut).
+- Mesure du temps de réponse.
+- Vérification du certificat HTTPS avec les autorités de confiance du monitor.
+- Timeout, erreur DNS/TLS ou code inattendu : sonde KO.
+- Panne confirmée après plusieurs échecs consécutifs (3 par défaut).
+- Un succès remet le compteur d'échecs à zéro.
+
+La boucle attend 30 secondes après chaque cycle. Les sites sont testés
+successivement ; des sites lents peuvent allonger cet intervalle.
+Cette boucle est indépendante des contrôles et de la récupération Docker.
+
+Le dashboard affiche les sites suivis, les sites OK, les pannes confirmées,
+le dernier cycle, les codes HTTP, les temps de réponse et la disponibilité.
+La disponibilité est le pourcentage des contrôles enregistrés qui sont OK ;
+les interruptions de collecte ne sont pas comptées comme des pannes du site.
+
+Cette version ne redémarre pas les serveurs distants et n'envoie pas de
+notifications. CPU et mémoire du serveur distant nécessitent une collecte dédiée.
+
+Vérifier les résultats :
+docker logs --tail 50 webmon-monitor
+docker exec webmon-monitor cat /runtime/websites.json
+curl -fsS http://localhost:9100/metrics | grep '^webmon_website'
+
+Une configuration JSON invalide conserve les derniers résultats.
+Si l'âge du dernier cycle augmente, vérifier la configuration et les logs.
+Les URL sont présentes dans le fichier d'état local, mais pas dans les labels
+Prometheus. Vérifier ce fichier avant de partager son contenu.
