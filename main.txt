@@ -16,6 +16,15 @@ Rôle : consulter les tableaux de bord de métriques et les logs.
 Identifiants initiaux configurés : admin / admin, sauf modification.
 Les logs Loki se consultent dans Grafana, rubrique Explore, source Loki.
 
+Dashboard simplifié des conteneurs :
+http://localhost:3000/d/webmon-containers/webmon-conteneurs
+Dans Grafana : Dashboards > WebMon > WebMon - Conteneurs.
+Il affiche l'état Docker, la sonde (healthcheck, HTTP ou heartbeat),
+les pannes confirmées, le CPU, la mémoire et le réseau.
+La liste suit automatiquement les nouveaux conteneurs du même hôte Docker.
+Un conteneur sans sonde applicative est affiché comme Non testé.
+Guide : docs/CONTAINER_MONITORING.md
+
 Prometheus
 Adresse : http://localhost:9090/
 Rôle : interroger les métriques et vérifier les cibles de collecte.

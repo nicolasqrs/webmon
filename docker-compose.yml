@@ -181,6 +181,7 @@ services:
 
       # Evaluation et confirmation des pannes
       - ./scripts/evaluate-failures.sh:/scripts/evaluate-failures.sh:ro
+      - ./scripts/export-container-metrics.sh:/scripts/export-container-metrics.sh:ro
       - ./scripts/execute-recovery-actions.sh:/scripts/execute-recovery-actions.sh:ro
       - ./scripts/reconstruct-container.sh:/scripts/reconstruct-container.sh:ro
       - ./scripts/validate-recovery-manifest.sh:/scripts/validate-recovery-manifest.sh:ro
@@ -211,7 +212,8 @@ services:
              /scripts/sync-expected-containers.sh >/dev/null &&
              /scripts/check-workers.sh &&
              /scripts/check-http-auto.sh &&
-             /scripts/evaluate-failures.sh >/dev/null; then
+             /scripts/evaluate-failures.sh >/dev/null &&
+             /scripts/export-container-metrics.sh; then
             RECOVERY_EXECUTION_ENABLED=1 /scripts/execute-recovery-actions.sh
           else
             echo "WebMon: cycle incomplet, récupération suspendue." >&2
