@@ -41,7 +41,7 @@
             "uid": "loki"
           },
           "refId": "A",
-          "expr": "sum by (container) (count_over_time({container=~`${container:regex}`, container=~\".+\", stream=~`${stream:regex}`} |= ${search:json} [1m]))",
+          "expr": "sum by (container) (count_over_time({container=~`${container:regex}`, container=~\".+\", stream=~`${stream:regex}`} |= ${search:doublequote} [1m]))",
           "queryType": "range",
           "legendFormat": "{{container}}",
           "editorMode": "code"
@@ -107,7 +107,7 @@
             "uid": "loki"
           },
           "refId": "A",
-          "expr": "{container=~`${container:regex}`, container=~\".+\", stream=~`${stream:regex}`} |= ${search:json}",
+          "expr": "{container=~`${container:regex}`, container=~\".+\", stream=~`${stream:regex}`} |= ${search:doublequote}",
           "queryType": "range",
           "editorMode": "code",
           "maxLines": 500
@@ -146,7 +146,7 @@
             "uid": "loki"
           },
           "refId": "A",
-          "expr": "{container=~`${container:regex}`, container=~\".+\", stream=~`${stream:regex}`} |= ${search:json} |~ `(?i)(\\b(error|fatal|panic|exception|failed|failure)\\b|échec|echec)`",
+          "expr": "{container=~`${container:regex}`, container=~\".+\", stream=~`${stream:regex}`} |= ${search:doublequote} |~ `(?i)(\\b(error|fatal|panic|exception|failed|failure)\\b|échec|echec)`",
           "queryType": "range",
           "editorMode": "code",
           "maxLines": 500
@@ -204,7 +204,7 @@
   },
   "title": "WebMon - Logs",
   "uid": "webmon-logs",
-  "version": 2,
+  "version": 3,
   "timezone": "browser",
   "refresh": "10s",
   "description": "Logs Docker par conteneur, recherche et actions de récupération WebMon.",
