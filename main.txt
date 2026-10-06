@@ -311,3 +311,56 @@ Une configuration JSON invalide conserve les derniers résultats.
 Si l'âge du dernier cycle augmente, vérifier la configuration et les logs.
 Les URL sont présentes dans le fichier d'état local, mais pas dans les labels
 Prometheus. Vérifier ce fichier avant de partager son contenu.
+
+LOGS DES CONTENEURS DANS GRAFANA
+================================
+Dashboard : WebMon - Logs (UID webmon-logs), dans le dossier WebMon.
+Lien : http://localhost:3000/d/webmon-logs/webmon-logs
+
+1. Choisir la période en haut à droite (par défaut : dernière heure).
+2. Choisir un ou plusieurs conteneurs, ou All pour tous les conteneurs collectés.
+3. Flux : All, stdout ou stderr. stderr peut contenir des messages normaux.
+4. Texte : recherche littérale sensible à la casse ; laisser vide pour tout afficher.
+5. Lire Messages récents ; cliquer une ligne pour ses détails.
+6. Erreurs possibles repère des mots clés et peut avoir des faux positifs.
+7. Actions de récupération WebMon montre les actions du monitor sur la période,
+   indépendamment des filtres. Le graphe montre le volume des messages filtrés.
+
+La liste des conteneurs vient des logs présents dans Loki sur la période choisie.
+Un conteneur silencieux peut ne pas apparaître : vérifier son état dans WebMon.
+Les panneaux affichent au maximum 500 lignes ; réduire la période pour enquêter.
+Le dashboard se rafraîchit toutes les 10 secondes.
+
+Collecte automatique
+--------------------
+Promtail découvre les conteneurs du même moteur Docker toutes les 5 secondes.
+Le label logging=promtail n'est plus nécessaire. Les anciens labels restent valides.
+Les nouveaux conteneurs sont collectés sans ajouter un panneau dans Grafana.
+Le monitor est également collecté pour afficher les actions de récupération.
+Promtail lui-même est exclu pour éviter les boucles de logs d'erreur de collecte.
+
+Pour exclure les logs d'un conteneur, ajouter ce label lors de sa création :
+  docker run --label webmon.logs=false ...
+Ou dans le service Docker Compose :
+  labels:
+    webmon.logs: "false"
+Puis recréer ce conteneur pour appliquer le label. L'historique déjà dans Loki reste.
+
+La collecte lit stdout/stderr via Docker : les fichiers de logs internes à une
+application ne sont pas collectés automatiquement. Le pilote Docker doit permettre
+la lecture des logs ; vérifier avec docker logs NOM_DU_CONTENEUR. Un site externe
+supervisé par URL ne transmet pas ses logs ; un autre hôte nécessite un collecteur.
+
+Appliquer cette mise à jour
+--------------------------
+  git switch main
+  git pull --ff-only https://github.com/nicolasqrs/webmon.git main
+  docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --no-deps --force-recreate promtail
+  docker compose -f docker-compose.yml -f docker-compose.demo.yml restart grafana
+
+Attendre 30 secondes, rouvrir WebMon - Logs et choisir la dernière heure.
+Sans le mode demo, omettre -f docker-compose.demo.yml dans ces commandes.
+En cas d'absence de nouveaux logs :
+  docker logs --tail 50 webmon-promtail
+  curl -fsS http://localhost:3100/ready
+  docker logs --tail 20 NOM_DU_CONTENEUR

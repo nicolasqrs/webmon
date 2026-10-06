@@ -1,50 +1,278 @@
 {
-  "annotations": {"list": []},
+  "annotations": {
+    "list": []
+  },
   "editable": true,
   "panels": [
     {
-      "title": "Logs - Tous les conteneurs WebMon",
-      "type": "logs",
-      "datasource": {"type": "loki", "uid": "loki"},
-      "gridPos": {"h": 11, "w": 24, "x": 0, "y": 0},
-      "options": {"showTime": true, "showLabels": true, "wrapLogMessage": true, "sortOrder": "Descending"},
-      "targets": [
-        {"datasource": {"type": "loki", "uid": "loki"}, "expr": "{container=~\"webmon-.+\"}", "refId": "A"}
-      ]
+      "id": 1,
+      "title": "Lire les logs",
+      "type": "text",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 3
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Choisissez un **conteneur**, un **flux** et la période en haut. Le champ **Texte** cherche une expression littérale (vide = tous les messages).\n\nLes erreurs possibles sont repérées par mots clés ; **stderr ne signifie pas toujours erreur**. Une absence de logs ne prouve pas un arrêt. Les actions WebMon restent visibles indépendamment des filtres."
+      }
     },
     {
-      "title": "Logs - Backend",
-      "type": "logs",
-      "datasource": {"type": "loki", "uid": "loki"},
-      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 11},
-      "options": {"showTime": true, "showLabels": false, "wrapLogMessage": true, "sortOrder": "Descending"},
-      "targets": [
-        {"datasource": {"type": "loki", "uid": "loki"}, "expr": "{container=\"webmon-backend\"}", "refId": "A"}
-      ]
-    },
-    {
-      "title": "Logs - Nginx",
-      "type": "logs",
-      "datasource": {"type": "loki", "uid": "loki"},
-      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 11},
-      "options": {"showTime": true, "showLabels": false, "wrapLogMessage": true, "sortOrder": "Descending"},
-      "targets": [
-        {"datasource": {"type": "loki", "uid": "loki"}, "expr": "{container=\"webmon-nginx\"}", "refId": "A"}
-      ]
-    },
-    {
-      "title": "Volume de logs par conteneur",
+      "id": 2,
+      "title": "Volume des messages filtrés par conteneur / minute",
+      "description": "Fenêtre glissante de 1 minute. Suit les filtres Conteneur, Flux et Texte.",
       "type": "timeseries",
-      "datasource": {"type": "loki", "uid": "loki"},
-      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 20},
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 24,
+        "h": 7
+      },
       "targets": [
-        {"datasource": {"type": "loki", "uid": "loki"}, "expr": "sum by (container) (count_over_time({container=~\"webmon-.+\"}[1m]))", "refId": "A"}
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "refId": "A",
+          "expr": "sum by (container) (count_over_time({container=~`${container:regex}`, container=~\".+\", stream=~`${stream:regex}`} |= ${search:json} [1m]))",
+          "queryType": "range",
+          "legendFormat": "{{container}}",
+          "editorMode": "code"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Messages récents — sélection",
+      "description": "500 lignes maximum, les plus récentes en premier. Cliquer une ligne pour ses détails. Les filtres du haut s’appliquent.",
+      "type": "logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 24,
+        "h": 12
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "refId": "A",
+          "expr": "{container=~`${container:regex}`, container=~\".+\", stream=~`${stream:regex}`} |= ${search:json}",
+          "queryType": "range",
+          "editorMode": "code",
+          "maxLines": 500
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Erreurs possibles — sélection",
+      "description": "Mots clés error, fatal, panic, exception, failed, failure, échec. Peut inclure des faux positifs ; consulter les messages récents pour le contexte.",
+      "type": "logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 12,
+        "h": 10
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "refId": "A",
+          "expr": "{container=~`${container:regex}`, container=~\".+\", stream=~`${stream:regex}`} |= ${search:json} |~ `(?i)(\\b(error|fatal|panic|exception|failed|failure)\\b|échec|echec)`",
+          "queryType": "range",
+          "editorMode": "code",
+          "maxLines": 500
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Actions de récupération WebMon",
+      "description": "Redémarrages, reconstructions, retours à l’état sain et refus. Ce panneau suit la période mais ignore les filtres Conteneur, Flux et Texte.",
+      "type": "logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 22,
+        "w": 12,
+        "h": 10
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": true,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "refId": "A",
+          "expr": "{container=\"webmon-monitor\"} |= \"WebMon recovery:\"",
+          "queryType": "range",
+          "editorMode": "code",
+          "maxLines": 500
+        }
       ]
     }
   ],
   "schemaVersion": 39,
-  "tags": ["webmon", "logs"],
-  "time": {"from": "now-1h", "to": "now"},
+  "tags": [
+    "webmon",
+    "logs"
+  ],
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
   "title": "WebMon - Logs",
-  "uid": "webmon-logs"
+  "uid": "webmon-logs",
+  "version": 2,
+  "timezone": "browser",
+  "refresh": "10s",
+  "description": "Logs Docker par conteneur, recherche et actions de récupération WebMon.",
+  "templating": {
+    "list": [
+      {
+        "name": "container",
+        "label": "Conteneur",
+        "type": "query",
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
+        "query": "label_values({container=~\".+\"}, container)",
+        "definition": "label_values({container=~\".+\"}, container)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".+",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": []
+      },
+      {
+        "name": "stream",
+        "label": "Flux",
+        "type": "custom",
+        "query": "stdout,stderr",
+        "multi": false,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": [
+          {
+            "text": "stdout",
+            "value": "stdout",
+            "selected": false
+          },
+          {
+            "text": "stderr",
+            "value": "stderr",
+            "selected": false
+          }
+        ]
+      },
+      {
+        "name": "search",
+        "label": "Texte (sensible à la casse)",
+        "type": "textbox",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "options": [
+          {
+            "text": "",
+            "value": "",
+            "selected": true
+          }
+        ]
+      }
+    ]
+  }
 }
