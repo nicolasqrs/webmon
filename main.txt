@@ -1,4 +1,70 @@
-WEBMON - INTERFACES WEB
+WEBMON - MODE D'EMPLOI ET INTERFACES WEB
+
+MODE D'EMPLOI RAPIDE : AJOUTER UNE CIBLE
+
+Prérequis : WebMon est démarré. Pour les commandes ci-dessous, ouvrir un
+terminal sur le serveur WebMon et se placer dans le dossier du projet :
+cd ~/webmon
+(Adapter ce chemin si le projet est installé ailleurs.)
+
+A. AJOUTER UN CONTENEUR
+
+1. Lancer votre application avec sa commande docker run ou son propre Compose.
+   Elle doit tourner sur le même moteur Docker que WebMon.
+   Vérifier sa présence : docker ps -a
+
+2. Attendre environ 30 à 60 secondes, puis actualiser :
+   http://IP_DU_SERVEUR/
+   WebMon découvre le conteneur automatiquement, sans formulaire d'ajout.
+
+3. Ouvrir Grafana > Dashboards > WebMon > WebMon - Conteneurs.
+   Choisir son nom dans le filtre Conteneur pour voir sa sonde et ses ressources.
+
+4. Si le résultat est Non testé, configurer un healthcheck adapté à
+   l'application. Démarré signifie que le processus tourne ; OK signifie
+   que la sonde disponible réussit.
+
+Pour un exemple de lancement et de healthcheck, lire plus bas
+« AJOUTER UN CONTENEUR À WEBMON ».
+Un conteneur sur une autre machine n'est pas découvert automatiquement.
+Pour surveiller son service web, utiliser la procédure B avec son URL.
+
+B. AJOUTER UN SITE WEB
+
+1. Ouvrir le fichier de configuration :
+   nano config/websites.json
+
+2. Remplacer [] par la liste de vos sites (exemple complet plus bas).
+   Pour ajouter un site à une liste existante, conserver les entrées actuelles
+   et ajouter un objet séparé du précédent par une virgule.
+   Ne pas ajouter de virgule après le dernier objet.
+   Donner à chaque site un nom unique et son URL HTTP ou HTTPS complète.
+
+3. Enregistrer avec Ctrl+O, Entrée, puis quitter avec Ctrl+X.
+   Vérifier la syntaxe :
+   docker exec webmon-monitor jq empty /website-config/websites.json
+
+4. Attendre environ 30 à 60 secondes, puis ouvrir :
+   Grafana > Dashboards > WebMon > WebMon - Sites web
+   http://IP_DU_SERVEUR:3000/d/webmon-websites/webmon-sites-web
+
+5. Choisir le site dans le filtre Site. Vérifier son état OK, son code HTTP
+   et son temps de réponse. Une panne est confirmée après le nombre
+   d'échecs consécutifs configuré.
+
+Les URL sont relues automatiquement : aucun redémarrage n'est nécessaire
+pour ajouter un site lorsque la fonctionnalité est déjà déployée.
+Pour retirer un site, supprimer uniquement son objet de la liste JSON.
+Pour les exemples, le déploiement et le dépannage, lire plus bas
+« SUPERVISION DES SITES WEB NON CONTENEURISÉS ».
+
+Remplacer IP_DU_SERVEUR par l'adresse du serveur WebMon.
+Un site distant doit être accessible depuis le monitor.
+Une URL localhost désigne le conteneur monitor ; pour un site hébergé
+sur la machine Docker, utiliser host.docker.internal avec le bon port.
+
+
+INTERFACES WEB
 
 Depuis le serveur lui-même, utiliser les adresses localhost ci-dessous.
 Depuis un autre ordinateur, remplacer localhost par l'adresse IP du serveur.
